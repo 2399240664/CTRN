@@ -127,15 +127,15 @@ class CTRN(nn.Module):
 
 	def getQuestionEmbedding(self, question_tokenized, attention_mask):
 		roberta_states = self.lm_model(question_tokenized, attention_mask=attention_mask)
-		roberta_last_hidden_states = roberta_states[0]
-		roberta_embedding = roberta_states[-1]
-		states = roberta_last_hidden_states.transpose(1, 0)
-		states1 = roberta_embedding.transpose(1, 0)
+		question_embedding = roberta_states[0]
+		# roberta_embedding = roberta_states[-1]
+		states = question_embedding.transpose(1, 0)
+		# states1 = roberta_embedding.transpose(1, 0)
 		cls_embedding = states[0]
 		# question_embedding = cls_embedding
-		question_embedding = roberta_last_hidden_states
+		# question_embedding = roberta_last_hidden_states
 		# question_embedding = torch.mean(roberta_last_hidden_states, dim=1)
-		return question_embedding, states1, cls_embedding
+		return question_embedding, cls_embedding
 
 	# scoring function from TComplEx
 	def score_time(self, head_embedding, tail_embedding, relation_embedding):
@@ -261,7 +261,7 @@ class CTRN(nn.Module):
 
 
 		# context-aware step
-		question_embedding, word_embedding, cls_embedding = self.getQuestionEmbedding(question_tokenized,
+		question_embedding, cls_embedding = self.getQuestionEmbedding(question_tokenized,
 																					  question_attention_mask)
 		score_mask = torch.matmul(question_embedding, question_embedding.transpose(-2, -1))
 		score_mask = (score_mask == 0)
