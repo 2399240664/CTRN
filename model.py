@@ -97,7 +97,7 @@ class CTRN(nn.Module):
 		self.COM=nn.Linear(2 * self.tkbc_embedding_dim, self.tkbc_embedding_dim)
 		self.attn = MultiHeadAttention(3, self.sentence_embedding_dim)
 		self.gcn_common = GCN(args, self.sentence_embedding_dim, 2)
-		# self.LINE=nn.Linear(512, 768)
+
 		return
 
 	def invert_binary_tensor(self, tensor):
@@ -274,15 +274,15 @@ class CTRN(nn.Module):
 		Convolution = nn.Conv1d(n, n, 3).cuda()
 		conve = F.relu(Convolution(h_cse))
 		deep_q = self.linearc(conve)
-
+		asp_wn = question_attention_mask.sum(dim=1).unsqueeze(-1)  # aspect words num
+		mask = question_attention_mask.unsqueeze(-1).repeat(1, 1, 512)
+		h_e = (deep_q * mask).sum(dim=1) / asp_wn
 		question_embedding1 = self.project_sentence_to_transformer_dim(question_embedding)
 		entity_mask = entity_mask_padded.unsqueeze(-1).expand(question_embedding1.shape)
 		entity_time_embedding_projected = self.project_entity(entity_time_embedding)
 
 		if self.supervision == 'soft':
-			asp_wn = question_attention_mask.sum(dim=1).unsqueeze(-1)  # aspect words num
-			mask = question_attention_mask.unsqueeze(-1).repeat(1, 1, 512)
-			h_e = (deep_q * mask).sum(dim=1) / asp_wn
+
 			cls = self.linear(cls_embedding)
 			gate_value = self.kg_gate1(torch.cat([h_e, cls], dim=-1)).sigmoid()
 			vq = gate_value * h_e + (1 - gate_value) * cls
@@ -301,7 +301,21 @@ class CTRN(nn.Module):
 					torch.cat((entity_time_embedding_projected, time_pos_embeddings1, time_pos_embeddings2), dim=-1))
 			else:
 				entity_time_embedding_projected = entity_time_embedding_projected + time_pos_embeddings1 + time_pos_embeddings2
+		elif self.supervision == 'hard':
+			t1 = a[7].cuda()
+			t2 = a[8].cuda()
+			t1_emb = self.tkbc_model.embeddings[2](t1)
+			t2_emb = self.tkbc_model.embeddings[2](t2)
+			time_pos_embeddings1 = t1_emb.unsqueeze(0).transpose(0, 1)
+			time_pos_embeddings1 = time_pos_embeddings1.expand(entity_time_embedding_projected.shape)
 
+			time_pos_embeddings2 = t2_emb.unsqueeze(0).transpose(0, 1)
+			time_pos_embeddings2 = time_pos_embeddings2.expand(entity_time_embedding_projected.shape)
+			if self.fuse == 'cat':
+				entity_time_embedding_projected = self.lin_cat(
+					torch.cat((entity_time_embedding_projected, time_pos_embeddings1, time_pos_embeddings2), dim=-1))
+			else:
+				entity_time_embedding_projected = entity_time_embedding_projected + time_pos_embeddings1 + time_pos_embeddings2
 
 		# Transformer information fusion layer
 		masked_entity_time_embedding = entity_time_embedding_projected * self.invert_binary_tensor(entity_mask)
